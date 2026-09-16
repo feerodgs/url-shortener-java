@@ -45,7 +45,7 @@ public class UrlController {
     }
 
     private ResponseEntity<Void> createRedirectResponse(ShortenedUrl shortenedUrl) {
-        urlShortenerService.registerClick(shortenedUrl);
+        urlShortenerService.registerClick(shortenedUrl.getShortCode());
 
         return ResponseEntity.status(HttpStatus.FOUND).header(HttpHeaders.LOCATION, shortenedUrl.getOriginalUrl()).build();
     }

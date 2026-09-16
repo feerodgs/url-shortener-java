@@ -4,21 +4,24 @@ import com.feerodogs.urlshortener.domain.ShortenedUrl;
 import com.feerodogs.urlshortener.dto.request.CreateShortUrlRequest;
 import com.feerodogs.urlshortener.dto.response.CreateShortUrlResponse;
 import com.feerodogs.urlshortener.dto.response.UrlStatisticsResponse;
+import com.feerodogs.urlshortener.repository.UrlRepository;
 import com.feerodogs.urlshortener.util.ShortCodeGenerator;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class UrlShortenerService {
 
-    private final Map<String, ShortenedUrl> urlsByShortCode = new ConcurrentHashMap<>();
+    private final UrlRepository urlRepository;
     private final ShortCodeGenerator shortCodeGenerator;
 
-    public UrlShortenerService(ShortCodeGenerator shortCodeGenerator) {
+    public UrlShortenerService(
+            UrlRepository urlRepository,
+            ShortCodeGenerator shortCodeGenerator
+    ) {
+        this.urlRepository = urlRepository;
         this.shortCodeGenerator = shortCodeGenerator;
     }
 
@@ -26,23 +29,38 @@ public class UrlShortenerService {
         String shortCode = generateUniqueShortCode();
         Instant createdAt = Instant.now();
 
-        ShortenedUrl shortenedUrl = new ShortenedUrl(shortCode, request.url(), createdAt);
+        ShortenedUrl shortenedUrl = new ShortenedUrl(
+                shortCode,
+                request.url(),
+                createdAt
+        );
 
-        urlsByShortCode.put(shortCode, shortenedUrl);
+        urlRepository.save(shortenedUrl);
 
-        return new CreateShortUrlResponse(shortCode, baseUrl + "/" + shortCode, shortenedUrl.getOriginalUrl(), shortenedUrl.getCreatedAt());
+        return new CreateShortUrlResponse(
+                shortCode,
+                baseUrl + "/" + shortCode,
+                shortenedUrl.getOriginalUrl(),
+                Instant.parse(shortenedUrl.getCreatedAt())
+        );
     }
 
     public Optional<ShortenedUrl> findByShortCode(String shortCode) {
-        return Optional.ofNullable(urlsByShortCode.get(shortCode));
+        return urlRepository.findByShortCode(shortCode);
     }
 
     public Optional<UrlStatisticsResponse> getStatistics(String shortCode) {
-        return findByShortCode(shortCode).map(shortenedUrl -> new UrlStatisticsResponse(shortenedUrl.getShortCode(), shortenedUrl.getOriginalUrl(), shortenedUrl.getCreatedAt(), shortenedUrl.getClicks()));
+        return findByShortCode(shortCode)
+                .map(shortenedUrl -> new UrlStatisticsResponse(
+                        shortenedUrl.getShortCode(),
+                        shortenedUrl.getOriginalUrl(),
+                        Instant.parse(shortenedUrl.getCreatedAt()),
+                        shortenedUrl.getClicks()
+                ));
     }
 
-    public void registerClick(ShortenedUrl shortenedUrl) {
-        shortenedUrl.incrementClicks();
+    public void registerClick(String shortCode) {
+        urlRepository.incrementClicks(shortCode);
     }
 
     private String generateUniqueShortCode() {
@@ -50,7 +68,7 @@ public class UrlShortenerService {
 
         do {
             shortCode = shortCodeGenerator.generate();
-        } while (urlsByShortCode.containsKey(shortCode));
+        } while (urlRepository.findByShortCode(shortCode).isPresent());
 
         return shortCode;
     }
